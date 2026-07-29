@@ -1,0 +1,378 @@
+.home-dashboard-container {
+  --bg-deep: #101a15;
+  --bg-panel: #17231d;
+  --bg-card: #1d2b23;
+  --line: #2c3c33;
+  --vanilla-cream: #e9dfc4;
+  --vanilla-gold: #c69a5c;
+  --mist-teal: #5fc9ac;
+  --text-primary: #ece7da;
+  --text-muted: #8ea79a;
+  --off: #4a5850;
+  --alert: #d97a6c;
+
+  display: flex;
+  justify-content: start;
+  align-items: center;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: "Inter", "Segoe UI", sans-serif;
+  padding: 48px clamp(20px, 5vw, 64px);
+  box-sizing: border-box;
+  padding-top: 10vh;
+}
+
+.dashboard-header {
+  max-width: 720px;
+  margin-bottom: 40px;
+  width: 100%;
+}
+
+.header-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.header-eyebrow {
+  display: inline-block;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vanilla-gold);
+  margin-bottom: 10px;
+}
+
+.dashboard-header h2 {
+  font-family: "Space Grotesk", "Inter", sans-serif;
+  font-size: clamp(28px, 4vw, 40px);
+  font-weight: 600;
+  margin: 0 0 10px;
+  letter-spacing: -0.01em;
+}
+
+.dashboard-header p {
+  color: var(--text-muted);
+  font-size: 15px;
+  margin: 0 0 18px;
+  line-height: 1.5;
+}
+
+.vine-divider {
+  width: 100%;
+  max-width: 420px;
+  height: 18px;
+  color: var(--vanilla-gold);
+  opacity: 0.6;
+}
+
+/* --- Badge koneksi live/offline --- */
+
+.connection-badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 6px 12px 6px 10px;
+  flex-shrink: 0;
+}
+
+.connection-badge .status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--off);
+}
+
+.connection-badge.live .status-dot {
+  background: var(--mist-teal);
+  box-shadow: 0 0 0 3px rgba(95, 201, 172, 0.18);
+}
+
+.connection-badge.offline .status-dot {
+  background: var(--alert);
+  box-shadow: 0 0 0 3px rgba(217, 122, 108, 0.18);
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+  max-width: 1000px;
+  width: 100%;
+}
+
+.control-card {
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 22px;
+  transition: border-color 0.25s ease;
+}
+
+.control-card h3 {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.setting-desc {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 0 0 18px;
+}
+
+/* --- Kartu readout angka besar (suhu) --- */
+
+.readout-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 168px;
+}
+
+.readout-card.is-warning {
+  border-color: var(--alert);
+}
+
+.card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--bg-panel);
+  color: var(--vanilla-gold);
+  flex-shrink: 0;
+}
+
+.readout-value {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1;
+  margin-top: 18px;
+  color: var(--text-primary);
+}
+
+.readout-value .unit {
+  font-size: 16px;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.readout-caption {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* --- Switch cards (sistem / pompa) --- */
+
+.switch-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 168px;
+}
+
+.switch-card.is-active {
+  border-color: var(--mist-teal);
+}
+
+.card-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 6px 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--off);
+}
+
+.status-dot.on {
+  background: var(--mist-teal);
+  box-shadow: 0 0 0 3px rgba(95, 201, 172, 0.18);
+}
+
+.switch-toggle {
+  position: relative;
+  width: 100%;
+  height: 40px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: var(--bg-panel);
+  cursor: pointer;
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  justify-content: space-between;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  transition: background 0.25s ease, border-color 0.25s ease;
+}
+
+.switch-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.switch-toggle.on {
+  background: rgba(95, 201, 172, 0.12);
+  border-color: var(--mist-teal);
+}
+
+.switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 0.25s ease, background 0.25s ease;
+}
+
+.switch-toggle.on .switch-knob {
+  background: var(--mist-teal);
+  transform: translateX(180%);
+}
+
+.switch-label-on,
+.switch-label-off {
+  z-index: 1;
+}
+
+.switch-toggle.on .switch-label-off,
+.switch-toggle.off .switch-label-on {
+  opacity: 0.25;
+}
+
+/* --- Kartu 3 sensor tanah (gaya tank, dipakai ulang dari nutrient reservoir) --- */
+
+.soil-card {
+  grid-column: span 1;
+}
+
+.soil-average {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.soil-average .unit {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-left: 3px;
+}
+
+.tank-row {
+  display: flex;
+  gap: 22px;
+  justify-content: center;
+  padding-top: 14px;
+}
+
+.tank-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.tank {
+  position: relative;
+  width: 40px;
+  height: 96px;
+  border: 1.5px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.tank-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: linear-gradient(180deg, var(--mist-teal), var(--vanilla-cream));
+  transition: height 0.4s ease;
+}
+
+.tank-fill-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: rgba(16, 26, 21, 0.35);
+}
+
+.tank-ticks {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 20px,
+    var(--line) 20px,
+    var(--line) 21px
+  );
+  pointer-events: none;
+}
+
+.tank-label {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.threshold-note {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 14px;
+}
+
+.threshold-note strong {
+  color: var(--vanilla-gold);
+  font-weight: 600;
+}
