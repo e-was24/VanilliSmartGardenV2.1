@@ -3,17 +3,33 @@ const http = require('http');
 const { Server } = require('socket.io');
 const mqtt = require('mqtt');
 const cors = require('cors');
+const fetch = require('node-fetch');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, service: 'vanili-smart-garden-backend' });
+  res.json({ ok: true, service: 'smart-garden-backend' });
 });
 
 app.get('/api/sensor', (req, res) => {
   res.json(lastData);
+});
+
+app.post('/api/verify-face', async (req, res) => {
+  try {
+    const pythonUrl = process.env.PYTHON_FACE_URL || 'https://smart-garden-backend.vercel.app/api/verify-face';
+    const response = await fetch(pythonUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body),
+    });
+    const data = await response.json();
+    res.status(response.status).json(data);
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
 });
 
 const server = http.createServer(app);

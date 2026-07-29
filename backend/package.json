@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "echo 'No build step required for backend'"
   },
   "engines": {
     "node": ">=18"
@@ -12,6 +13,7 @@
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "mqtt": "^5.15.2",
+    "node-fetch": "^2.6.7",
     "socket.io": "^4.8.3"
   }
 }
