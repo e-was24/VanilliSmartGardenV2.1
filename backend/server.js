@@ -8,6 +8,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, service: 'vanili-smart-garden-backend' });
+});
+
+app.get('/api/sensor', (req, res) => {
+  res.json(lastData);
+});
+
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
@@ -124,4 +132,10 @@ io.on('connection', (socket) => {
   socket.emit('sensor-update', lastData);
 });
 
-server.listen(3001, () => console.log('Backend jalan di port 3001'));
+const port = Number(process.env.PORT || 3001);
+
+if (require.main === module) {
+  server.listen(port, () => console.log(`Backend jalan di port ${port}`));
+}
+
+module.exports = app;

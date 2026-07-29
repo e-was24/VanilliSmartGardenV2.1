@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
-import { io } from "socket.io-client";
 import "./css/homeDashboard.css";
 
-// Ganti sesuai alamat backend kamu
-const BACKEND_URL = "http://localhost:3001";
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "http://localhost:3001").replace(/\/$/, "");
 
 const AMBANG_SIRAM = 70; // samakan dengan AMBANG_SIRAM di kode ESP32
 
@@ -19,13 +17,33 @@ export default function Home() {
   const [sensorData, setSensorData] = useState({ moisture: null, detail: null, suhu: null });
 
   useEffect(() => {
-    const socket = io(BACKEND_URL);
+    let cancelled = false;
 
-    socket.on("connect", () => setConnected(true));
-    socket.on("disconnect", () => setConnected(false));
-    socket.on("sensor-update", (data) => setSensorData(data));
+    const loadSensorData = async () => {
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/sensor`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-    return () => socket.disconnect();
+        const data = await response.json();
+        if (!cancelled) {
+          setSensorData(data);
+          setConnected(true);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setConnected(false);
+          console.error("Gagal mengambil data sensor:", error);
+        }
+      }
+    };
+
+    loadSensorData();
+    const intervalId = window.setInterval(loadSensorData, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   const detail = sensorData.detail; // { raw:[], persen:[], rata_rata }

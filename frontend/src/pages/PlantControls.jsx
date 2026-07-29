@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
-import { io } from "socket.io-client";
 import "./css/plantControls.css";
 
-// Ganti sesuai alamat backend kamu
-const BACKEND_URL = "http://localhost:3001";
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "http://localhost:3001").replace(/\/$/, "");
 
 const AMBANG_SIRAM = 70; // samakan dengan AMBANG_SIRAM di kode ESP32
 
@@ -54,24 +52,39 @@ export default function PlantControls() {
   const [sprayInterval, setSprayInterval] = useState(0.1); // dalam menit
 
   useEffect(() => {
-    const socket = io(BACKEND_URL);
+    let cancelled = false;
 
-    socket.on("sensor-update", (data) => {
-      setRataRataKelembaban(data.moisture);
-      setTerakhirUpdate(data.terakhirUpdate ?? null);
+    const loadSensorData = async () => {
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/sensor`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-      // Cuma timpa systemActive kalau backend sudah pernah dapat status asli
-      // (sistemAktif masih null di backend berarti belum pernah terima
-      // topic retained-nya, misal broker baru nyala / device belum pernah connect)
-      if (data.sistemAktif !== null && data.sistemAktif !== undefined) {
-        setSystemActive(data.sistemAktif);
+        const data = await response.json();
+        if (!cancelled) {
+          setRataRataKelembaban(data.moisture);
+          setTerakhirUpdate(data.terakhirUpdate ?? null);
+
+          if (data.sistemAktif !== null && data.sistemAktif !== undefined) {
+            setSystemActive(data.sistemAktif);
+          }
+          if (data.autoWateringAktif !== null && data.autoWateringAktif !== undefined) {
+            setAutoWateringActive(data.autoWateringAktif);
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Gagal mengambil data sensor:", error);
+        }
       }
-      if (data.autoWateringAktif !== null && data.autoWateringAktif !== undefined) {
-        setAutoWateringActive(data.autoWateringAktif);
-      }
-    });
+    };
 
-    return () => socket.disconnect();
+    loadSensorData();
+    const intervalId = window.setInterval(loadSensorData, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   // Data sensor dianggap basi kalau: sistem lagi OFF, ATAU sudah lama tidak ada

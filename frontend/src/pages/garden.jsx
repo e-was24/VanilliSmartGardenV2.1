@@ -1,9 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
-import { io } from "socket.io-client";
 import "./css/gardenControl.css";
 
-// Ganti sesuai alamat backend kamu
-const BACKEND_URL = "http://localhost:3001";
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "http://localhost:3001").replace(/\/$/, "");
 
 const AMBANG_SIRAM_DEFAULT = 70; // fallback sebelum data dari backend datang
 
@@ -30,7 +28,6 @@ const IconGauge = () => (
 
 export default function Garden() {
   const [connected, setConnected] = useState(false);
-  const [socket, setSocket] = useState(null);
 
   const [mode, setMode] = useState("auto"); // "auto" | "manual"
   const [pumpOn, setPumpOn] = useState(false);
@@ -41,40 +38,52 @@ export default function Garden() {
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    const s = io(BACKEND_URL);
-    setSocket(s);
+    let cancelled = false;
 
-    s.on("connect", () => setConnected(true));
-    s.on("disconnect", () => setConnected(false));
+    const loadSensorData = async () => {
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/sensor`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-    s.on("sensor-update", (data) => {
-      if (data?.moisture !== undefined) setMoisture(data.moisture);
-    });
-
-    // Diharapkan backend mengirim status kontrol kebun, sesuaikan nama event
-    // dengan implementasi ESP32 / server kamu bila berbeda.
-    s.on("control-update", (data) => {
-      if (data?.mode) setMode(data.mode);
-      if (data?.pumpOn !== undefined) setPumpOn(data.pumpOn);
-      if (data?.threshold !== undefined) {
-        setThreshold(data.threshold);
-        setThresholdDraft(data.threshold);
+        const data = await response.json();
+        if (!cancelled) {
+          setConnected(true);
+          if (data?.moisture !== undefined) setMoisture(data.moisture);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setConnected(false);
+          console.error("Gagal mengambil data sensor:", error);
+        }
       }
-    });
+    };
 
-    return () => s.disconnect();
+    loadSensorData();
+    const intervalId = window.setInterval(loadSensorData, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   const emitAction = useCallback(
-    (event, payload, label) => {
-      if (!socket || !connected) return;
+    async (event, payload, label) => {
       setSending(true);
-      socket.emit(event, payload, () => setSending(false));
-      // fallback in case backend doesn't ack
-      setTimeout(() => setSending(false), 1200);
       setLastAction({ text: label, time: new Date() });
+
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/health`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        setConnected(true);
+      } catch (error) {
+        setConnected(false);
+        console.error("Gagal menghubungi backend:", error);
+      } finally {
+        setSending(false);
+      }
     },
-    [socket, connected]
+    []
   );
 
   const handleModeChange = (nextMode) => {
