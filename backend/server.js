@@ -136,7 +136,7 @@ app.post('/api/sistem', (req, res) => {
   mqttClient.publish('kebun/sistem/set', aksi);
 
   // TAMBAHAN: Update state lokal & broadcast ke semua client agar real-time tanpa refresh
-  lastData.sistemAktif = (aksi === 'START');
+  lastData.sistemAktif = isAktif; // Pastikan ini nilainya boolean (true/false)
   io.emit('sensor-update', lastData);
 
   res.json({ ok: true });
