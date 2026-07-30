@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import "./css/plantControls.css";
 
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "http://localhost:3001").replace(/\/$/, "");
+import { BACKEND_URL } from "../config/api";
 
 const AMBANG_SIRAM = 70; // samakan dengan AMBANG_SIRAM di kode ESP32
 
