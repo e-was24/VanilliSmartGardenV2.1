@@ -54,41 +54,51 @@ async function compareFaces(referenceBuffer, probeBuffer) {
 }
 
 app.post('/api/verify-face', upload.single('file'), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ status: 'error', message: 'Gambar tidak dikirim.' });
-  }
+  try {
+    if (!req.file || !req.file.buffer || req.file.buffer.length === 0) {
+      return res.status(400).json({ status: 'error', message: 'Gambar tidak dikirim.' });
+    }
 
-  if (!fs.existsSync(REFERENCE_IMAGE_PATH)) {
-    return res.status(404).json({
-      status: 'error',
-      message: 'Belum ada wajah terdaftar. Silakan tekan tombol Daftarkan Wajah Saya terlebih dahulu.',
+    if (!fs.existsSync(REFERENCE_IMAGE_PATH)) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Belum ada wajah terdaftar. Silakan tekan tombol Daftarkan Wajah Saya terlebih dahulu.',
+      });
+    }
+
+    const referenceBuffer = fs.readFileSync(REFERENCE_IMAGE_PATH);
+    const { similarity, ok } = await compareFaces(referenceBuffer, req.file.buffer);
+
+    return res.json({
+      status: ok ? 'success' : 'failed',
+      message: ok ? 'Wajah cocok. Akses diperbolehkan.' : 'Wajah tidak cocok. Akses ditolak.',
+      confidence: Number(similarity.toFixed(4)),
+      threshold: THRESHOLD,
+      allowed: ok,
     });
+  } catch (error) {
+    console.error('verify-face error', error);
+    return res.status(500).json({ status: 'error', message: 'Gagal memproses wajah saat ini.' });
   }
-
-  const referenceBuffer = fs.readFileSync(REFERENCE_IMAGE_PATH);
-  const { similarity, ok } = await compareFaces(referenceBuffer, req.file.buffer);
-
-  return res.json({
-    status: ok ? 'success' : 'failed',
-    message: ok ? 'Wajah cocok. Akses diperbolehkan.' : 'Wajah tidak cocok. Akses ditolak.',
-    confidence: Number(similarity.toFixed(4)),
-    threshold: THRESHOLD,
-    allowed: ok,
-  });
 });
 
 app.post('/api/register-face', upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ status: 'error', message: 'Gambar tidak dikirim.' });
+  try {
+    if (!req.file || !req.file.buffer || req.file.buffer.length === 0) {
+      return res.status(400).json({ status: 'error', message: 'Gambar tidak dikirim.' });
+    }
+
+    fs.writeFileSync(REFERENCE_IMAGE_PATH, req.file.buffer);
+
+    return res.json({
+      status: 'success',
+      message: 'Wajah pemilik berhasil disimpan sebagai referensi.',
+      path: REFERENCE_IMAGE_PATH,
+    });
+  } catch (error) {
+    console.error('register-face error', error);
+    return res.status(500).json({ status: 'error', message: 'Gagal menyimpan wajah referensi.' });
   }
-
-  fs.writeFileSync(REFERENCE_IMAGE_PATH, req.file.buffer);
-
-  return res.json({
-    status: 'success',
-    message: 'Wajah pemilik berhasil disimpan sebagai referensi.',
-    path: REFERENCE_IMAGE_PATH,
-  });
 });
 
 const server = http.createServer(app);
