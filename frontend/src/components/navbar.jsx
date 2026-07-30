@@ -3,6 +3,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useNavigate, useLocation } from "react-router";
 import Webcam from "react-webcam";
 
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "https://smart-garden-backend.vercel.app").replace(/\/$/, "");
+
 const icon = [
   {
     link: "/",
@@ -176,7 +178,7 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
       const formData = new FormData();
       formData.append("file", imageBlob, "webcam_capture.jpg");
 
-      const response = await fetch("http://127.0.0.1:8000/api/verify-face", {
+      const response = await fetch(`${BACKEND_URL}/api/verify-face`, {
         method: "POST",
         body: formData,
       });
@@ -209,7 +211,7 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
       const formData = new FormData();
       formData.append("file", imageBlob, "owner_register.jpg");
 
-      const response = await fetch("http://127.0.0.1:8000/api/register-face", {
+      const response = await fetch(`${BACKEND_URL}/api/register-face`, {
         method: "POST",
         body: formData,
       });
