@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Routes, Route, Navigate } from "react-router";
-import Navbar from "./components/navbar";
+import Navbar from "./components/Navbar";
 import Home from "./pages/Home";
-import Garden from "./pages/garden";
-import Data from "./pages/data";
+import Garden from "./pages/Garden";
+import Data from "./pages/Data";
 import PlantControls from "./pages/PlantControls";
 import "./App.css";
 
@@ -23,7 +23,7 @@ function App() {
 
   return (
     <div className="apps">
-      <div className="nav-cover" style={{position: "fixed", width: "100%", zIndex: "999"}}>
+      <div className="nav-cover" style={{ position: "fixed", width: "100%", zIndex: "999" }}>
         <Navbar
           isAuthenticated={isAuthenticated}
           setIsAuthenticated={setIsAuthenticated}

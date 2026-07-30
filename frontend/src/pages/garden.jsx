@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
+import { getSensorData, setWateringState, setPumpState } from "../config/api";
 import "./css/gardenControl.css";
-
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "http://localhost:3001").replace(/\/$/, "");
 
 const AMBANG_SIRAM_DEFAULT = 70; // fallback sebelum data dari backend datang
 
@@ -42,13 +41,16 @@ export default function Garden() {
 
     const loadSensorData = async () => {
       try {
-        const response = await fetch(`${BACKEND_URL}/api/sensor`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const data = await response.json();
+        const data = await getSensorData();
         if (!cancelled) {
           setConnected(true);
           if (data?.moisture !== undefined) setMoisture(data.moisture);
+          if (data?.autoWateringAktif !== undefined && data?.autoWateringAktif !== null) {
+            setMode(data.autoWateringAktif ? "auto" : "manual");
+          }
+          if (data?.pompaAktif !== undefined && data?.pompaAktif !== null) {
+            setPumpOn(data.pompaAktif);
+          }
         }
       } catch (error) {
         if (!cancelled) {
@@ -67,39 +69,47 @@ export default function Garden() {
     };
   }, []);
 
-  const emitAction = useCallback(
-    async (event, payload, label) => {
-      setSending(true);
-      setLastAction({ text: label, time: new Date() });
-
-      try {
-        const response = await fetch(`${BACKEND_URL}/api/health`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        setConnected(true);
-      } catch (error) {
-        setConnected(false);
-        console.error("Gagal menghubungi backend:", error);
-      } finally {
-        setSending(false);
-      }
-    },
-    []
-  );
-
-  const handleModeChange = (nextMode) => {
+  const handleModeChange = async (nextMode) => {
     setMode(nextMode);
-    emitAction("set-mode", { mode: nextMode }, `Mode diubah ke ${nextMode === "auto" ? "Otomatis" : "Manual"}`);
+    setSending(true);
+    setLastAction({
+      text: `Mode diubah ke ${nextMode === "auto" ? "Otomatis" : "Manual"}`,
+      time: new Date(),
+    });
+
+    try {
+      await setWateringState(nextMode === "auto" ? "ON" : "OFF");
+    } catch (err) {
+      console.error("Gagal mengubah mode penyiraman:", err);
+    } finally {
+      setSending(false);
+    }
   };
 
-  const handlePumpToggle = () => {
+  const handlePumpToggle = async () => {
     const next = !pumpOn;
     setPumpOn(next);
-    emitAction("toggle-pump", { on: next }, next ? "Pompa dinyalakan" : "Pompa dimatikan");
+    setSending(true);
+    setLastAction({
+      text: next ? "Pompa dinyalakan" : "Pompa dimatikan",
+      time: new Date(),
+    });
+
+    try {
+      await setPumpState(next ? "ON" : "OFF");
+    } catch (err) {
+      console.error("Gagal mengubah status pompa:", err);
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleThresholdCommit = () => {
     setThreshold(thresholdDraft);
-    emitAction("set-threshold", { value: thresholdDraft }, `Ambang siram diatur ke ${thresholdDraft}%`);
+    setLastAction({
+      text: `Ambang siram diatur ke ${thresholdDraft}%`,
+      time: new Date(),
+    });
   };
 
   const timeAgo = (date) => {
@@ -120,13 +130,13 @@ export default function Garden() {
             {connected ? "Live" : "Offline"}
           </span>
         </div>
-        <h2>Kontrol</h2>
+        <h2>Kontrol Garden</h2>
         <p>Atur mode penyiraman, pompa, dan ambang kelembaban tanah.</p>
         <svg className="vine-divider" viewBox="0 0 600 24" preserveAspectRatio="none">
           <path
             d="M0 12 C 60 2, 90 22, 150 12 S 240 2, 300 12 S 390 22, 450 12 S 540 2, 600 12"
             fill="none"
-            stroke="none"
+            stroke="currentColor"
             strokeWidth="1.5"
           />
         </svg>
@@ -147,7 +157,7 @@ export default function Garden() {
               type="button"
               className={`mode-option ${mode === "auto" ? "active" : ""}`}
               onClick={() => handleModeChange("auto")}
-              disabled={!connected}
+              disabled={!connected || sending}
             >
               Otomatis
             </button>
@@ -155,7 +165,7 @@ export default function Garden() {
               type="button"
               className={`mode-option ${mode === "manual" ? "active" : ""}`}
               onClick={() => handleModeChange("manual")}
-              disabled={!connected}
+              disabled={!connected || sending}
             >
               Manual
             </button>
