@@ -1,9 +1,12 @@
 const express = require('express');
 const http = require('http');
+const path = require('path');
+const fs = require('fs');
 const { Server } = require('socket.io');
 const mqtt = require('mqtt');
 const cors = require('cors');
 const multer = require('multer');
+const sharp = require('sharp');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -16,21 +19,57 @@ app.get('/api/health', (req, res) => {
 });
 
 app.get('/api/sensor', (req, res) => {
+  res.set('Cache-Control', 'no-store');
   res.json(lastData);
 });
 
-app.post('/api/verify-face', upload.single('file'), (req, res) => {
+const REFERENCE_IMAGE_PATH = path.join(__dirname, 'reference-face.jpg');
+const THRESHOLD = 0.40;
+
+async function compareFaces(referenceBuffer, probeBuffer) {
+  try {
+    const reference = await sharp(referenceBuffer).resize(200, 200).grayscale().raw().toBuffer();
+    const probe = await sharp(probeBuffer).resize(200, 200).grayscale().raw().toBuffer();
+
+    if (!reference || !probe || reference.length !== probe.length) {
+      return { similarity: 0, ok: false };
+    }
+
+    let sum = 0;
+    for (let i = 0; i < reference.length; i += 1) {
+      sum += (reference[i] - probe[i]) ** 2;
+    }
+
+    const mse = sum / reference.length;
+    const similarity = Math.max(0, 1 - Math.min(1, mse / 65025));
+    return { similarity, ok: similarity >= THRESHOLD };
+  } catch (error) {
+    console.error('Face compare error', error);
+    return { similarity: 0, ok: false };
+  }
+}
+
+app.post('/api/verify-face', upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ status: 'error', message: 'Gambar tidak dikirim.' });
   }
 
+  if (!fs.existsSync(REFERENCE_IMAGE_PATH)) {
+    return res.status(404).json({
+      status: 'error',
+      message: 'Belum ada wajah terdaftar. Silakan tekan tombol Daftarkan Wajah Saya terlebih dahulu.',
+    });
+  }
+
+  const referenceBuffer = fs.readFileSync(REFERENCE_IMAGE_PATH);
+  const { similarity, ok } = await compareFaces(referenceBuffer, req.file.buffer);
+
   return res.json({
-    status: 'success',
-    message: 'Wajah diterima dari kamera. Backend siap memproses verifikasi.',
-    confidence: 0.92,
-    threshold: 0.4,
-    received: true,
-    fileName: req.file.originalname || 'capture.jpg',
+    status: ok ? 'success' : 'failed',
+    message: ok ? 'Wajah cocok. Akses diperbolehkan.' : 'Wajah tidak cocok. Akses ditolak.',
+    confidence: Number(similarity.toFixed(4)),
+    threshold: THRESHOLD,
+    allowed: ok,
   });
 });
 
@@ -39,11 +78,12 @@ app.post('/api/register-face', upload.single('file'), (req, res) => {
     return res.status(400).json({ status: 'error', message: 'Gambar tidak dikirim.' });
   }
 
+  fs.writeFileSync(REFERENCE_IMAGE_PATH, req.file.buffer);
+
   return res.json({
     status: 'success',
-    message: 'Foto referensi berhasil diterima oleh backend.',
-    received: true,
-    fileName: req.file.originalname || 'owner_register.jpg',
+    message: 'Wajah pemilik berhasil disimpan sebagai referensi.',
+    path: REFERENCE_IMAGE_PATH,
   });
 });
 
@@ -133,13 +173,13 @@ app.post('/api/sistem', (req, res) => {
     return res.status(400).json({ ok: false, error: 'aksi harus START atau STOP' });
   }
 
+  const sistemAktif = aksi === 'START';
   mqttClient.publish('kebun/sistem/set', aksi);
 
-  // TAMBAHAN: Update state lokal & broadcast ke semua client agar real-time tanpa refresh
-  lastData.sistemAktif = isAktif; // Pastikan ini nilainya boolean (true/false)
+  lastData.sistemAktif = sistemAktif;
   io.emit('sensor-update', lastData);
 
-  res.json({ ok: true });
+  res.json({ ok: true, sistemAktif: lastData.sistemAktif });
 });
 
 app.post('/api/watering', (req, res) => {
@@ -151,11 +191,10 @@ app.post('/api/watering', (req, res) => {
 
   mqttClient.publish('kebun/watering/set', aksi);
 
-  // TAMBAHAN: Update state lokal & broadcast ke semua client agar real-time tanpa refresh
-  lastData.autoWateringAktif = (aksi === 'ON');
+  lastData.autoWateringAktif = aksi === 'ON';
   io.emit('sensor-update', lastData);
 
-  res.json({ ok: true });
+  res.json({ ok: true, autoWateringAktif: lastData.autoWateringAktif });
 });
 
 app.post('/api/pompa', (req, res) => {
@@ -167,11 +206,10 @@ app.post('/api/pompa', (req, res) => {
 
   mqttClient.publish('kebun/pompa/set', aksi);
 
-  // TAMBAHAN: Update state lokal & broadcast ke semua client agar real-time tanpa refresh
-  lastData.pompaAktif = (aksi === 'ON');
+  lastData.pompaAktif = aksi === 'ON';
   io.emit('sensor-update', lastData);
 
-  res.json({ ok: true });
+  res.json({ ok: true, pompaAktif: lastData.pompaAktif });
 });
 
 // Kirim data terakhir saat client baru connect

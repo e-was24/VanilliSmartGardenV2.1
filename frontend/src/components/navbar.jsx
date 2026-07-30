@@ -131,11 +131,14 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
     if (item.title === "Plant Controls") {
       if (!isAuthenticated) {
         e.preventDefault();
+        e.stopPropagation();
         setShowVerifyModal(true);
         setMessage("");
+        return;
       }
     } else if (item.link === "#") {
       e.preventDefault();
+      e.stopPropagation();
     }
   };
 
@@ -191,15 +194,21 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
         result = { message: text || `HTTP ${response.status}` };
       }
 
-      if (response.ok && result.status === "success") {
-        setMessage(result.message);
+      if (response.ok && result.status === "success" && result.allowed !== false) {
+        setMessage(result.message || "Wajah cocok. Akses diberikan.");
         setTimeout(() => {
           setIsAuthenticated(true);
+          if (typeof window !== "undefined") {
+            window.sessionStorage.setItem("faceVerified", "true");
+          }
           setShowVerifyModal(false);
           setLoading(false);
           navigate("/plant");
         }, 1000);
       } else {
+        if (typeof window !== "undefined") {
+          window.sessionStorage.removeItem("faceVerified");
+        }
         setMessage(result.message || "Wajah tidak dikenali! Akses ditolak.");
         setLoading(false);
       }
@@ -314,6 +323,10 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
             <p>
               Posisikan wajah Anda di depan kamera untuk membuka{" "}
               <b>Plant Controls</b>.
+              <br />
+              <small>
+                Register Face hanya menyimpan wajah Anda sebagai acuan. Verify Face hanya akan mengizinkan akses jika wajah yang terlihat cocok dengan acuan.
+              </small>
             </p>
 
             <div className="webcam-container">
@@ -338,29 +351,27 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
             {message && <p className="status-message">{message}</p>}
 
             <div className="modal-actions">
-              <div className="modal-actions">
-                <button
-                  onClick={captureAndVerify}
-                  disabled={loading}
-                  className="btn-verify"
-                >
-                  {loading ? "Proses..." : "Verifikasi Sekarang"}
-                </button>
-                <button
-                  onClick={captureAndRegister}
-                  disabled={loading}
-                  className="btn-verify"
-                >
-                  Daftarkan Wajah Saya
-                </button>
-                <button
-                  onClick={() => setShowVerifyModal(false)}
-                  disabled={loading}
-                  className="btn-cancel"
-                >
-                  Batal
-                </button>
-              </div>
+              <button
+                onClick={captureAndVerify}
+                disabled={loading}
+                className="btn-verify"
+              >
+                {loading ? "Memeriksa..." : "Verify Face"}
+              </button>
+              <button
+                onClick={captureAndRegister}
+                disabled={loading}
+                className="btn-verify"
+              >
+                Register Face
+              </button>
+              <button
+                onClick={() => setShowVerifyModal(false)}
+                disabled={loading}
+                className="btn-cancel"
+              >
+                Batal
+              </button>
             </div>
           </div>
         </div>
