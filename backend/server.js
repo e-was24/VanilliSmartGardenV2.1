@@ -23,6 +23,10 @@ app.get('/api/sensor', (req, res) => {
   res.json(lastData);
 });
 
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, service: 'smart-garden-backend' });
+});
+
 const REFERENCE_IMAGE_PATH = path.join(__dirname, 'reference-face.jpg');
 const THRESHOLD = 0.40;
 
@@ -91,7 +95,13 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 // ---- Koneksi ke broker MQTT ----
-const mqttClient = mqtt.connect('mqtt://broker.emqx.io:1883');
+let mqttClient = null;
+
+try {
+  mqttClient = mqtt.connect('mqtt://broker.emqx.io:1883');
+} catch (error) {
+  console.error('Gagal membuat koneksi MQTT:', error);
+}
 
 const TOPICS_SUBSCRIBE = [
   'kebun/sensor/moisture',
@@ -117,17 +127,18 @@ let lastData = {
   terakhirUpdate: null,
 };
 
-mqttClient.on('connect', () => {
-  console.log('Terhubung ke MQTT broker');
-  mqttClient.subscribe(TOPICS_SUBSCRIBE);
-});
+if (mqttClient) {
+  mqttClient.on('connect', () => {
+    console.log('Terhubung ke MQTT broker');
+    mqttClient.subscribe(TOPICS_SUBSCRIBE);
+  });
 
-mqttClient.on('error', (err) => {
-  console.error('MQTT error:', err.message);
-});
+  mqttClient.on('error', (err) => {
+    console.error('MQTT error:', err.message);
+  });
 
-// Setiap ada data baru dari ESP32, teruskan ke semua client React via socket.io
-mqttClient.on('message', (topic, payload) => {
+  // Setiap ada data baru dari ESP32, teruskan ke semua client React via socket.io
+  mqttClient.on('message', (topic, payload) => {
   const pesan = payload.toString();
 
   switch (topic) {
@@ -161,8 +172,9 @@ mqttClient.on('message', (topic, payload) => {
       break;
   }
 
-  io.emit('sensor-update', lastData); // broadcast ke semua React yang lagi connect
-});
+    io.emit('sensor-update', lastData); // broadcast ke semua React yang lagi connect
+  });
+}
 
 // ---- Endpoint REST buat React kirim perintah ----
 
@@ -174,7 +186,9 @@ app.post('/api/sistem', (req, res) => {
   }
 
   const sistemAktif = aksi === 'START';
-  mqttClient.publish('kebun/sistem/set', aksi);
+  if (mqttClient) {
+    mqttClient.publish('kebun/sistem/set', aksi);
+  }
 
   lastData.sistemAktif = sistemAktif;
   io.emit('sensor-update', lastData);
@@ -189,7 +203,9 @@ app.post('/api/watering', (req, res) => {
     return res.status(400).json({ ok: false, error: 'aksi harus ON atau OFF' });
   }
 
-  mqttClient.publish('kebun/watering/set', aksi);
+  if (mqttClient) {
+    mqttClient.publish('kebun/watering/set', aksi);
+  }
 
   lastData.autoWateringAktif = aksi === 'ON';
   io.emit('sensor-update', lastData);
@@ -204,7 +220,9 @@ app.post('/api/pompa', (req, res) => {
     return res.status(400).json({ ok: false, error: 'aksi harus ON atau OFF' });
   }
 
-  mqttClient.publish('kebun/pompa/set', aksi);
+  if (mqttClient) {
+    mqttClient.publish('kebun/pompa/set', aksi);
+  }
 
   lastData.pompaAktif = aksi === 'ON';
   io.emit('sensor-update', lastData);

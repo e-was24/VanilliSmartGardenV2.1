@@ -21,10 +21,13 @@ export default function Home() {
 
     const loadSensorData = async () => {
       try {
-        const response = await fetch(`${BACKEND_URL}/api/sensor`);
+        const response = await fetch(`${BACKEND_URL}/api/sensor`, { cache: "no-store" });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-        const data = await response.json();
+        const text = await response.text();
+        if (!text) throw new Error("Respons kosong dari backend");
+
+        const data = JSON.parse(text);
         if (!cancelled) {
           setSensorData(data);
           setConnected(true);
