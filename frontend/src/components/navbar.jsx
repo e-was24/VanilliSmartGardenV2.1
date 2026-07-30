@@ -190,7 +190,7 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
     try {
       const imageBlob = await captureCroppedBlob();
       const formData = new FormData();
-      formData.append("file", imageBlob, "webcam_capture.jpg");
+      formData.append("file", imageBlob, "owner_face.jpg");
 
       const response = await fetch(`${BACKEND_URL}/api/verify-face`, {
         method: "POST",
@@ -230,7 +230,7 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
     try {
       const imageBlob = await captureCroppedBlob();
       const formData = new FormData();
-      formData.append("file", imageBlob, "owner_register.jpg");
+      formData.append("file", imageBlob, "owner_face.jpg");
 
       const response = await fetch(`${BACKEND_URL}/api/register-face`, {
         method: "POST",

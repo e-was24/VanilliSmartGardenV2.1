@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const os = require('os');
 const fs = require('fs');
 const { Server } = require('socket.io');
 const mqtt = require('mqtt');
@@ -27,8 +28,48 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, service: 'smart-garden-backend' });
 });
 
-const REFERENCE_IMAGE_PATH = path.join(__dirname, 'reference-face.jpg');
-const THRESHOLD = 0.40;
+const REFERENCE_IMAGE_PATH = path.join(__dirname, 'owner_face.jpg');
+const LEGACY_REFERENCE_IMAGE_PATH = path.join(__dirname, 'reference-face.jpg');
+const TEMP_REFERENCE_IMAGE_PATH = path.join(os.tmpdir(), 'owner_face.jpg');
+const THRESHOLD = 0.25;
+let registeredReferenceBuffer = null;
+
+function loadRegisteredReferenceBuffer() {
+  if (registeredReferenceBuffer) {
+    return registeredReferenceBuffer;
+  }
+
+  const candidates = [REFERENCE_IMAGE_PATH, LEGACY_REFERENCE_IMAGE_PATH, TEMP_REFERENCE_IMAGE_PATH];
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        registeredReferenceBuffer = fs.readFileSync(candidate);
+        return registeredReferenceBuffer;
+      }
+    } catch (error) {
+      console.error('Gagal membaca buffer wajah referensi:', error.message);
+    }
+  }
+
+  return null;
+}
+
+function persistRegisteredReferenceBuffer(buffer) {
+  registeredReferenceBuffer = buffer;
+
+  try {
+    fs.writeFileSync(REFERENCE_IMAGE_PATH, buffer);
+  } catch (error) {
+    console.error('Gagal menyimpan owner_face.jpg:', error.message);
+  }
+
+  try {
+    fs.writeFileSync(TEMP_REFERENCE_IMAGE_PATH, buffer);
+  } catch (error) {
+    console.error('Gagal menyimpan referensi ke tmp:', error.message);
+  }
+}
 
 async function compareFaces(referenceBuffer, probeBuffer) {
   try {
@@ -59,14 +100,14 @@ app.post('/api/verify-face', upload.single('file'), async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Gambar tidak dikirim.' });
     }
 
-    if (!fs.existsSync(REFERENCE_IMAGE_PATH)) {
+    const referenceBuffer = loadRegisteredReferenceBuffer();
+    if (!referenceBuffer) {
       return res.status(404).json({
         status: 'error',
         message: 'Belum ada wajah terdaftar. Silakan tekan tombol Daftarkan Wajah Saya terlebih dahulu.',
       });
     }
 
-    const referenceBuffer = fs.readFileSync(REFERENCE_IMAGE_PATH);
     const { similarity, ok } = await compareFaces(referenceBuffer, req.file.buffer);
 
     return res.json({
@@ -88,7 +129,7 @@ app.post('/api/register-face', upload.single('file'), (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Gambar tidak dikirim.' });
     }
 
-    fs.writeFileSync(REFERENCE_IMAGE_PATH, req.file.buffer);
+    persistRegisteredReferenceBuffer(req.file.buffer);
 
     return res.json({
       status: 'success',
