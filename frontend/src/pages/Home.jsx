@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import "./css/homeDashboard.css";
 
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "http://localhost:3001").replace(/\/$/, "");
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "https://smart-garden-backend.vercel.app").replace(/\/$/, "");
 
 const AMBANG_SIRAM = 70; // samakan dengan AMBANG_SIRAM di kode ESP32
 
