@@ -1,15 +1,10 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 import numpy as np
 import cv2
 
-try:
-    import face_recognition
-except ImportError:  # pragma: no cover - depends on environment
-    face_recognition = None
-
-app = FastAPI()
+app = FastAPI(title="Vanili Smart Garden - Face Recognition AI Service")
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,74 +16,115 @@ app.add_middleware(
 
 BASE_DIR = Path(__file__).resolve().parent
 OWNER_IMAGE_PATH = BASE_DIR / "owner_face.jpg"
-OWNER_ENCODING_PATH = BASE_DIR / "owner_face_encoding.npy"
-THRESHOLD = 0.45
 
 
-def _decode_image(contents: bytes):
-    nparr = np.frombuffer(contents, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    if img is None:
-        raise HTTPException(status_code=400, detail="Gambar tidak valid atau kosong.")
-    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-
-def _get_face_encoding(image_rgb):
-    if face_recognition is None:
-        raise HTTPException(status_code=500, detail="Pustaka face-recognition belum terpasang.")
-
-    face_locations = face_recognition.face_locations(image_rgb)
-    face_encodings = face_recognition.face_encodings(image_rgb, face_locations)
-
-    if not face_encodings:
-        raise HTTPException(status_code=400, detail="Tidak ada wajah yang terdeteksi. Coba foto yang lebih jelas.")
-
-    return face_encodings[0]
-
-
-def _load_reference_encoding():
-    if OWNER_ENCODING_PATH.exists():
-        return np.load(OWNER_ENCODING_PATH)
-
-    if OWNER_IMAGE_PATH.exists():
-        image_rgb = _decode_image(OWNER_IMAGE_PATH.read_bytes())
-        return _get_face_encoding(image_rgb)
-
-    raise HTTPException(status_code=404, detail="Foto referensi belum tersedia. Silakan daftar wajah terlebih dahulu.")
-
-
-def _save_reference_image(image_rgb):
-    cv2.imwrite(str(OWNER_IMAGE_PATH), cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR))
-    encoding = _get_face_encoding(image_rgb)
-    np.save(OWNER_ENCODING_PATH, encoding)
+@app.get("/api/health")
+async def health():
+    return {"status": "ok", "service": "face-verification-ai"}
 
 
 @app.post("/api/verify-face")
 async def verify_face(file: UploadFile = File(...)):
+    if not OWNER_IMAGE_PATH.exists():
+        return {
+            "status": "failed",
+            "allowed": False,
+            "message": "Foto referensi pemilik belum disimpan. Silakan tekan Simpan Muka terlebih dahulu."
+        }
+
     try:
+        owner_img = cv2.imread(str(OWNER_IMAGE_PATH))
+        if owner_img is None:
+            return {
+                "status": "failed",
+                "allowed": False,
+                "message": "File foto referensi pemilik tidak dapat dibaca."
+            }
+
         contents = await file.read()
         if not contents:
-            raise HTTPException(status_code=400, detail="Gambar tidak boleh kosong.")
+            return {
+                "status": "failed",
+                "allowed": False,
+                "message": "Gambar tidak boleh kosong."
+            }
 
-        probe_rgb = _decode_image(contents)
-        reference_encoding = _load_reference_encoding()
-        probe_encoding = _get_face_encoding(probe_rgb)
+        nparr = np.frombuffer(contents, np.uint8)
+        webcam_img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if webcam_img is None:
+            return {
+                "status": "failed",
+                "allowed": False,
+                "message": "Gambar tangkapan webcam tidak valid."
+            }
 
-        distance = float(face_recognition.face_distance([reference_encoding], probe_encoding)[0])
-        similarity = max(0.0, 1.0 - distance)
-        allowed = similarity >= THRESHOLD
+        # Simpan sampel gambar pemindaian untuk debugging
+        cv2.imwrite(str(BASE_DIR / "debug_webcam_capture.jpg"), webcam_img)
+
+        # 1. Konversi ke grayscale
+        gray_owner = cv2.cvtColor(owner_img, cv2.COLOR_BGR2GRAY)
+        gray_webcam = cv2.cvtColor(webcam_img, cv2.COLOR_BGR2GRAY)
+
+        # 2. Extract ORB feature keypoints
+        orb = cv2.ORB_create(nfeatures=500)
+        kp1, des1 = orb.detectAndCompute(gray_owner, None)
+        kp2, des2 = orb.detectAndCompute(gray_webcam, None)
+
+        if des1 is None or len(kp1) < 10:
+            return {
+                "status": "failed",
+                "allowed": False,
+                "message": "Foto referensi belum jelas. Mohon tekan Simpan Muka kembali."
+            }
+
+        if des2 is None or len(kp2) < 10:
+            return {
+                "status": "failed",
+                "allowed": False,
+                "message": "Wajah tidak terdeteksi di kamera."
+            }
+
+        # 3. Match feature descriptors dengan BFMatcher
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+        matches = bf.match(des1, des2)
+
+        # Ambil match dengan jarak kriteria ketat (distance < 48)
+        good_matches = [m for m in matches if m.distance < 48]
+        match_count = len(good_matches)
+
+        max_possible = min(len(kp1), len(kp2))
+        confidence = round(match_count / max_possible, 4) if max_possible > 0 else 0
+
+        # Kriteria Verifikasi Ketat:
+        # Harus ada minimal 14 fitur cocok DAN confidence >= 0.22
+        MIN_MATCH_COUNT = 14
+        MIN_CONFIDENCE = 0.22
+
+        is_matched = match_count >= MIN_MATCH_COUNT and confidence >= MIN_CONFIDENCE
+
+        if is_matched:
+            return {
+                "status": "success",
+                "allowed": True,
+                "message": "Verifikasi berhasil.",
+                "confidence": confidence,
+                "matches": match_count,
+            }
 
         return {
-            "status": "success" if allowed else "failed",
-            "message": "Verifikasi berhasil." if allowed else "Wajah tidak dikenali.",
-            "confidence": round(similarity, 4),
-            "threshold": THRESHOLD,
-            "allowed": allowed,
+            "status": "failed",
+            "allowed": False,
+            "message": "Wajah tidak cocok dengan pemilik! Akses ditolak.",
+            "confidence": confidence,
+            "matches": match_count,
         }
-    except HTTPException:
-        raise
-    except Exception as exc:  # pragma: no cover - defensive fallback
-        raise HTTPException(status_code=500, detail=f"Terjadi kesalahan server: {str(exc)}") from exc
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "allowed": False,
+            "message": f"Terjadi kesalahan AI: {str(e)}"
+        }
 
 
 @app.post("/api/register-face")
@@ -96,21 +132,34 @@ async def register_face(file: UploadFile = File(...)):
     try:
         contents = await file.read()
         if not contents:
-            raise HTTPException(status_code=400, detail="Gambar tidak boleh kosong.")
+            return {
+                "status": "failed",
+                "allowed": False,
+                "message": "Gambar tidak boleh kosong."
+            }
 
-        image_rgb = _decode_image(contents)
-        _save_reference_image(image_rgb)
+        nparr = np.frombuffer(contents, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return {
+                "status": "failed",
+                "allowed": False,
+                "message": "Gambar tidak valid atau kosong."
+            }
 
+        cv2.imwrite(str(OWNER_IMAGE_PATH), img)
         return {
             "status": "success",
-            "message": "Foto referensi berhasil disimpan.",
+            "allowed": True,
+            "message": "Wajah pemilik berhasil disimpan sebagai referensi.",
             "path": str(OWNER_IMAGE_PATH),
         }
-    except HTTPException:
-        raise
-    except Exception as exc:  # pragma: no cover - defensive fallback
-        raise HTTPException(status_code=500, detail=f"Terjadi kesalahan server: {str(exc)}") from exc
-
+    except Exception as e:
+        return {
+            "status": "error",
+            "allowed": False,
+            "message": f"Terjadi kesalahan server: {str(e)}"
+        }
 
 if __name__ == "__main__":
     import uvicorn

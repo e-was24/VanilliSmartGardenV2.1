@@ -8,6 +8,8 @@ const mqtt = require('mqtt');
 const cors = require('cors');
 const multer = require('multer');
 const sharp = require('sharp');
+const fetch = require('node-fetch');
+const FormData = require('form-data');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -24,14 +26,10 @@ app.get('/api/sensor', (req, res) => {
   res.json(lastData);
 });
 
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true, service: 'smart-garden-backend' });
-});
-
 const REFERENCE_IMAGE_PATH = path.join(__dirname, 'owner_face.jpg');
 const LEGACY_REFERENCE_IMAGE_PATH = path.join(__dirname, 'reference-face.jpg');
 const TEMP_REFERENCE_IMAGE_PATH = path.join(os.tmpdir(), 'owner_face.jpg');
-const THRESHOLD = 0.25;
+const STRICT_THRESHOLD = 0.78;
 let registeredReferenceBuffer = null;
 
 function loadRegisteredReferenceBuffer() {
@@ -82,12 +80,12 @@ async function compareFaces(referenceBuffer, probeBuffer) {
 
     let sum = 0;
     for (let i = 0; i < reference.length; i += 1) {
-      sum += (reference[i] - probe[i]) ** 2;
+      sum += Math.abs(reference[i] - probe[i]);
     }
 
-    const mse = sum / reference.length;
-    const similarity = Math.max(0, 1 - Math.min(1, mse / 65025));
-    return { similarity, ok: similarity >= THRESHOLD };
+    const mae = sum / reference.length;
+    const similarity = Math.max(0, 1 - mae / 255);
+    return { similarity, ok: similarity >= STRICT_THRESHOLD };
   } catch (error) {
     console.error('Face compare error', error);
     return { similarity: 0, ok: false };
@@ -97,14 +95,34 @@ async function compareFaces(referenceBuffer, probeBuffer) {
 app.post('/api/verify-face', upload.single('file'), async (req, res) => {
   try {
     if (!req.file || !req.file.buffer || req.file.buffer.length === 0) {
-      return res.status(400).json({ status: 'error', message: 'Gambar tidak dikirim.' });
+      return res.status(400).json({ status: 'failed', allowed: false, message: 'Gambar tidak dikirim.' });
+    }
+
+    // Try forwarding to Python FastAPI first
+    try {
+      const form = new FormData();
+      form.append('file', req.file.buffer, { filename: 'webcam_capture.jpg', contentType: 'image/jpeg' });
+
+      const pyRes = await fetch('http://127.0.0.1:8000/api/verify-face', {
+        method: 'POST',
+        body: form,
+        headers: form.getHeaders(),
+      });
+
+      if (pyRes.ok) {
+        const pyData = await pyRes.json();
+        return res.json(pyData);
+      }
+    } catch (pyErr) {
+      // Python AI service is offline, fallback to Node.js Sharp logic
     }
 
     const referenceBuffer = loadRegisteredReferenceBuffer();
     if (!referenceBuffer) {
       return res.status(404).json({
-        status: 'error',
-        message: 'Belum ada wajah terdaftar. Silakan tekan tombol Daftarkan Wajah Saya terlebih dahulu.',
+        status: 'failed',
+        allowed: false,
+        message: 'Belum ada wajah terdaftar. Silakan tekan tombol Simpan Muka terlebih dahulu.',
       });
     }
 
@@ -112,33 +130,47 @@ app.post('/api/verify-face', upload.single('file'), async (req, res) => {
 
     return res.json({
       status: ok ? 'success' : 'failed',
-      message: ok ? 'Wajah cocok. Akses diperbolehkan.' : 'Wajah tidak cocok. Akses ditolak.',
-      confidence: Number(similarity.toFixed(4)),
-      threshold: THRESHOLD,
       allowed: ok,
+      message: ok ? 'Verifikasi berhasil.' : 'Wajah tidak cocok dengan pemilik! Akses ditolak.',
+      confidence: Number(similarity.toFixed(4)),
+      threshold: STRICT_THRESHOLD,
     });
   } catch (error) {
     console.error('verify-face error', error);
-    return res.status(500).json({ status: 'error', message: 'Gagal memproses wajah saat ini.' });
+    return res.status(500).json({ status: 'failed', allowed: false, message: 'Gagal memproses verifikasi wajah.' });
   }
 });
 
-app.post('/api/register-face', upload.single('file'), (req, res) => {
+app.post('/api/register-face', upload.single('file'), async (req, res) => {
   try {
     if (!req.file || !req.file.buffer || req.file.buffer.length === 0) {
-      return res.status(400).json({ status: 'error', message: 'Gambar tidak dikirim.' });
+      return res.status(400).json({ status: 'failed', allowed: false, message: 'Gambar tidak dikirim.' });
     }
 
     persistRegisteredReferenceBuffer(req.file.buffer);
 
+    try {
+      const form = new FormData();
+      form.append('file', req.file.buffer, { filename: 'owner_register.jpg', contentType: 'image/jpeg' });
+
+      await fetch('http://127.0.0.1:8000/api/register-face', {
+        method: 'POST',
+        body: form,
+        headers: form.getHeaders(),
+      });
+    } catch (pyErr) {
+      // Python backend offline
+    }
+
     return res.json({
       status: 'success',
+      allowed: true,
       message: 'Wajah pemilik berhasil disimpan sebagai referensi.',
       path: REFERENCE_IMAGE_PATH,
     });
   } catch (error) {
     console.error('register-face error', error);
-    return res.status(500).json({ status: 'error', message: 'Gagal menyimpan wajah referensi.' });
+    return res.status(500).json({ status: 'failed', allowed: false, message: 'Gagal menyimpan wajah referensi.' });
   }
 });
 
@@ -158,23 +190,17 @@ const TOPICS_SUBSCRIBE = [
   'kebun/sensor/moisture',
   'kebun/sensor/moisture/detail',
   'kebun/sensor/suhu',
-  'kebun/sistem/status',   // retained: status ON/OFF sistem (master power) sebenarnya
-  'kebun/watering/status', // retained: status ON/OFF auto watering sebenarnya
+  'kebun/sistem/status',
+  'kebun/watering/status',
 ];
 
-// sistemAktif & terakhirUpdate sengaja dipisah dari data sensor:
-// - sistemAktif  -> status device yang sebenarnya (dari topic retained)
-// - terakhirUpdate -> kapan sensor TERAKHIR kali kirim data. Penting karena
-//   begitu sistem OFF, ESP32 berhenti total kirim data sensor (lihat catatan
-//   di firmware). Tanpa timestamp ini, React bakal terus nampilin angka lama
-//   seolah-olah itu masih live.
 let lastData = {
   moisture: null,
   detail: null,
   suhu: null,
   sistemAktif: null,
   autoWateringAktif: null,
-  pompaAktif: false, // Ditambahkan untuk status pompa
+  pompaAktif: false,
   terakhirUpdate: null,
 };
 
@@ -188,49 +214,46 @@ if (mqttClient) {
     console.error('MQTT error:', err.message);
   });
 
-  // Setiap ada data baru dari ESP32, teruskan ke semua client React via socket.io
   mqttClient.on('message', (topic, payload) => {
-  const pesan = payload.toString();
+    const pesan = payload.toString();
 
-  switch (topic) {
-    case 'kebun/sistem/status':
-      // retained message: ON/OFF status sistem (master power) sebenarnya
-      lastData.sistemAktif = pesan === 'ON';
-      break;
+    switch (topic) {
+      case 'kebun/sistem/status':
+        lastData.sistemAktif = pesan === 'ON';
+        break;
 
-    case 'kebun/watering/status':
-      // retained message: ON/OFF status auto watering sebenarnya
-      lastData.autoWateringAktif = pesan === 'ON';
-      break;
+      case 'kebun/watering/status':
+        lastData.autoWateringAktif = pesan === 'ON';
+        break;
 
-    case 'kebun/sensor/moisture':
-      lastData.moisture = Number(pesan);
-      lastData.terakhirUpdate = Date.now();
-      break;
-
-    case 'kebun/sensor/suhu':
-      lastData.suhu = pesan === 'error' ? null : Number(pesan);
-      lastData.terakhirUpdate = Date.now();
-      break;
-
-    case 'kebun/sensor/moisture/detail':
-      try {
-        lastData.detail = JSON.parse(pesan);
+      case 'kebun/sensor/moisture':
+        lastData.moisture = Number(pesan);
         lastData.terakhirUpdate = Date.now();
-      } catch (err) {
-        console.error('Gagal parse JSON detail sensor:', err.message);
-      }
-      break;
-  }
+        break;
 
-    io.emit('sensor-update', lastData); // broadcast ke semua React yang lagi connect
+      case 'kebun/sensor/suhu':
+        lastData.suhu = pesan === 'error' ? null : Number(pesan);
+        lastData.terakhirUpdate = Date.now();
+        break;
+
+      case 'kebun/sensor/moisture/detail':
+        try {
+          lastData.detail = JSON.parse(pesan);
+          lastData.terakhirUpdate = Date.now();
+        } catch (err) {
+          console.error('Gagal parse JSON detail sensor:', err.message);
+        }
+        break;
+    }
+
+    io.emit('sensor-update', lastData);
   });
 }
 
-// ---- Endpoint REST buat React kirim perintah ----
+// ---- Endpoint REST untuk kontrol ----
 
 app.post('/api/sistem', (req, res) => {
-  const { aksi } = req.body; // "START" atau "STOP"
+  const { aksi } = req.body;
 
   if (aksi !== 'START' && aksi !== 'STOP') {
     return res.status(400).json({ ok: false, error: 'aksi harus START atau STOP' });
@@ -248,7 +271,7 @@ app.post('/api/sistem', (req, res) => {
 });
 
 app.post('/api/watering', (req, res) => {
-  const { aksi } = req.body; // "ON" atau "OFF"
+  const { aksi } = req.body;
 
   if (aksi !== 'ON' && aksi !== 'OFF') {
     return res.status(400).json({ ok: false, error: 'aksi harus ON atau OFF' });
@@ -265,7 +288,7 @@ app.post('/api/watering', (req, res) => {
 });
 
 app.post('/api/pompa', (req, res) => {
-  const { aksi } = req.body; // "ON" atau "OFF"
+  const { aksi } = req.body;
 
   if (aksi !== 'ON' && aksi !== 'OFF') {
     return res.status(400).json({ ok: false, error: 'aksi harus ON atau OFF' });
@@ -281,7 +304,6 @@ app.post('/api/pompa', (req, res) => {
   res.json({ ok: true, pompaAktif: lastData.pompaAktif });
 });
 
-// Kirim data terakhir saat client baru connect
 io.on('connection', (socket) => {
   socket.emit('sensor-update', lastData);
 });
