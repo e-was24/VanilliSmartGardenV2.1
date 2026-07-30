@@ -173,6 +173,17 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
     );
   }, [webcamRef]);
 
+  const parseResponseBody = useCallback(async (response) => {
+    const text = await response.text();
+    if (!text) return null;
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { message: text };
+    }
+  }, []);
+
   const captureAndVerify = useCallback(async () => {
     setLoading(true);
     setMessage("Memverifikasi wajah...");
@@ -186,15 +197,9 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
         body: formData,
       });
 
-      let result = null;
-      try {
-        result = await response.json();
-      } catch {
-        const text = await response.text();
-        result = { message: text || `HTTP ${response.status}` };
-      }
+      const result = await parseResponseBody(response);
 
-      if (response.ok && result.status === "success" && result.allowed !== false) {
+      if (response.ok && result?.status === "success" && result.allowed !== false) {
         setMessage(result.message || "Wajah cocok. Akses diberikan.");
         setTimeout(() => {
           setIsAuthenticated(true);
@@ -232,15 +237,9 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
         body: formData,
       });
 
-      let result = null;
-      try {
-        result = await response.json();
-      } catch {
-        const text = await response.text();
-        result = { message: text || `HTTP ${response.status}` };
-      }
+      const result = await parseResponseBody(response);
 
-      setMessage(result.message || "Selesai.");
+      setMessage(result?.message || "Selesai.");
     } catch (error) {
       console.error(error);
       setMessage(error.message || "Gagal menyimpan foto referensi.");
