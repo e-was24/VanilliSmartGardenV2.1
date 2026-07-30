@@ -88,17 +88,18 @@ async def verify_face(file: UploadFile = File(...)):
         bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
         matches = bf.match(des1, des2)
 
-        # Ambil match dengan jarak kriteria ketat (distance < 48)
-        good_matches = [m for m in matches if m.distance < 48]
+        # Ambil match yang cukup baik (distance < 60 = cukup toleran terhadap
+        # perubahan pencahayaan & sudut kamera)
+        good_matches = [m for m in matches if m.distance < 60]
         match_count = len(good_matches)
 
         max_possible = min(len(kp1), len(kp2))
         confidence = round(match_count / max_possible, 4) if max_possible > 0 else 0
 
-        # Kriteria Verifikasi Ketat:
-        # Harus ada minimal 14 fitur cocok DAN confidence >= 0.22
-        MIN_MATCH_COUNT = 14
-        MIN_CONFIDENCE = 0.22
+        # Kriteria verifikasi — cukup toleran untuk variasi pencahayaan & sudut:
+        # minimal 6 fitur cocok DAN confidence >= 0.08
+        MIN_MATCH_COUNT = 6
+        MIN_CONFIDENCE = 0.08
 
         is_matched = match_count >= MIN_MATCH_COUNT and confidence >= MIN_CONFIDENCE
 

@@ -29,7 +29,8 @@ app.get('/api/sensor', (req, res) => {
 const REFERENCE_IMAGE_PATH = path.join(__dirname, 'owner_face.jpg');
 const LEGACY_REFERENCE_IMAGE_PATH = path.join(__dirname, 'reference-face.jpg');
 const TEMP_REFERENCE_IMAGE_PATH = path.join(os.tmpdir(), 'owner_face.jpg');
-const STRICT_THRESHOLD = 0.78;
+// Threshold toleran terhadap perubahan pencahayaan & sudut kamera
+const STRICT_THRESHOLD = 0.55;
 let registeredReferenceBuffer = null;
 
 function loadRegisteredReferenceBuffer() {
