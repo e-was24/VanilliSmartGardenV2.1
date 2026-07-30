@@ -73,6 +73,7 @@ let lastData = {
   suhu: null,
   sistemAktif: null,
   autoWateringAktif: null,
+  pompaAktif: false, // Ditambahkan untuk status pompa
   terakhirUpdate: null,
 };
 
@@ -133,6 +134,11 @@ app.post('/api/sistem', (req, res) => {
   }
 
   mqttClient.publish('kebun/sistem/set', aksi);
+
+  // TAMBAHAN: Update state lokal & broadcast ke semua client agar real-time tanpa refresh
+  lastData.sistemAktif = (aksi === 'START');
+  io.emit('sensor-update', lastData);
+
   res.json({ ok: true });
 });
 
@@ -144,6 +150,11 @@ app.post('/api/watering', (req, res) => {
   }
 
   mqttClient.publish('kebun/watering/set', aksi);
+
+  // TAMBAHAN: Update state lokal & broadcast ke semua client agar real-time tanpa refresh
+  lastData.autoWateringAktif = (aksi === 'ON');
+  io.emit('sensor-update', lastData);
+
   res.json({ ok: true });
 });
 
@@ -155,6 +166,11 @@ app.post('/api/pompa', (req, res) => {
   }
 
   mqttClient.publish('kebun/pompa/set', aksi);
+
+  // TAMBAHAN: Update state lokal & broadcast ke semua client agar real-time tanpa refresh
+  lastData.pompaAktif = (aksi === 'ON');
+  io.emit('sensor-update', lastData);
+
   res.json({ ok: true });
 });
 
