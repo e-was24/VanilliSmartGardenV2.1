@@ -2,8 +2,7 @@ import "./css/navbar.css";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useNavigate, useLocation } from "react-router";
 import Webcam from "react-webcam";
-
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "https://smart-garden-backend.vercel.app").replace(/\/$/, "");
+import { verifyFaceApi, registerFaceApi } from "../config/api";
 
 const icon = [
   {
@@ -116,29 +115,39 @@ const WaktuSekarang = () => {
 export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
-  const [isClick, setIsClick] = useState(0);
-  const [activeIndex, setActiveIndex] = useState(1);
-
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const webcamRef = useRef(null);
+  const isVerifyingRef = useRef(false);
 
   const navigate = useNavigate();
   const openMenu = () => setIsOpen(!isOpen);
+
+  // Jika halaman di-refresh di /plant atau mengakses /plant langsung tanpa auth, buka modal verifikasi
+  useEffect(() => {
+    if (location.pathname === "/plant" && !isAuthenticated) {
+      setShowVerifyModal(true);
+      setMessage("Posisikan wajah Anda di depan kamera untuk verifikasi otomatis.");
+    }
+  }, [location.pathname, isAuthenticated]);
 
   const handleMenuClick = (e, index, item) => {
     if (item.title === "Plant Controls") {
       if (!isAuthenticated) {
         e.preventDefault();
-        e.stopPropagation();
         setShowVerifyModal(true);
-        setMessage("");
-        return;
+        setMessage("Posisikan wajah Anda di depan kamera untuk verifikasi otomatis.");
       }
     } else if (item.link === "#") {
       e.preventDefault();
-      e.stopPropagation();
+    }
+  };
+
+  const handleCancelModal = () => {
+    setShowVerifyModal(false);
+    if (location.pathname === "/plant" && !isAuthenticated) {
+      navigate("/");
     }
   };
 
@@ -169,77 +178,64 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
       .drawImage(fullCanvas, cropX, cropY, cropW, cropH, 0, 0, 300, 300);
 
     return new Promise((resolve) =>
-      outCanvas.toBlob(resolve, "image/jpeg", 0.9),
+      outCanvas.toBlob(resolve, "image/jpeg", 0.9)
     );
   }, [webcamRef]);
 
-  const parseResponseBody = useCallback(async (response) => {
-    const text = await response.text();
-    if (!text) return null;
+  // Smart Verifikasi Otomatis
+  const autoVerify = useCallback(async () => {
+    if (isVerifyingRef.current || isAuthenticated) return;
+    isVerifyingRef.current = true;
 
-    try {
-      return JSON.parse(text);
-    } catch {
-      return { message: text };
-    }
-  }, []);
-
-  const captureAndVerify = useCallback(async () => {
-    setLoading(true);
-    setMessage("Memverifikasi wajah...");
     try {
       const imageBlob = await captureCroppedBlob();
-      const formData = new FormData();
-      formData.append("file", imageBlob, "owner_face.jpg");
+      const result = await verifyFaceApi(imageBlob);
 
-      const response = await fetch(`${BACKEND_URL}/api/verify-face`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const result = await parseResponseBody(response);
-
-      if (response.ok && result?.status === "success" && result.allowed !== false) {
-        setMessage(result.message || "Wajah cocok. Akses diberikan.");
+      if (result.status === "success" || result.allowed) {
+        setMessage("✓ Smart Verifikasi Berhasil! Akses Diterima.");
+        setIsAuthenticated(true);
         setTimeout(() => {
-          setIsAuthenticated(true);
-          if (typeof window !== "undefined") {
-            window.sessionStorage.setItem("faceVerified", "true");
-          }
           setShowVerifyModal(false);
-          setLoading(false);
           navigate("/plant");
-        }, 1000);
+        }, 700);
       } else {
-        if (typeof window !== "undefined") {
-          window.sessionStorage.removeItem("faceVerified");
-        }
-        setMessage(result.message || "Wajah tidak dikenali! Akses ditolak.");
-        setLoading(false);
+        setMessage("Mendeteksi wajah... Posisikan wajah di dalam oval.");
       }
-    } catch (error) {
-      console.error(error);
-      setMessage(error.message || "Gagal terhubung ke server backend AI.");
-      setLoading(false);
+    } catch (err) {
+      setMessage(err.message || "Smart Verification AI aktif...");
+    } finally {
+      isVerifyingRef.current = false;
     }
-  }, [captureCroppedBlob, setIsAuthenticated, navigate]);
+  }, [captureCroppedBlob, isAuthenticated, setIsAuthenticated, navigate]);
 
+  // Auto scan loop ketika modal terbuka
+  useEffect(() => {
+    let intervalId = null;
+
+    if (showVerifyModal && !isAuthenticated) {
+      const initialTimer = setTimeout(() => {
+        autoVerify();
+      }, 700);
+
+      intervalId = setInterval(() => {
+        autoVerify();
+      }, 1400);
+
+      return () => {
+        clearTimeout(initialTimer);
+        if (intervalId) clearInterval(intervalId);
+      };
+    }
+  }, [showVerifyModal, isAuthenticated, autoVerify]);
+
+  // Tombol Simpan Muka
   const captureAndRegister = useCallback(async () => {
     setLoading(true);
-    setMessage("Menyimpan foto referensi...");
+    setMessage("Menyimpan foto referensi wajah...");
     try {
       const imageBlob = await captureCroppedBlob();
-      const formData = new FormData();
-      formData.append("file", imageBlob, "owner_face.jpg");
-
-      const response = await fetch(`${BACKEND_URL}/api/register-face`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const result = await parseResponseBody(response);
-
-      setMessage(result?.message || "Selesai.");
+      const result = await registerFaceApi(imageBlob);
+      setMessage(result.message || "Wajah pemilik berhasil disimpan!");
     } catch (error) {
       console.error(error);
       setMessage(error.message || "Gagal menyimpan foto referensi.");
@@ -318,14 +314,15 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
       {showVerifyModal && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3>Verifikasi Wajah Pemilik</h3>
+            <h3>Smart Verification AI</h3>
+
+            <div className="smart-verify-badge">
+              <span className="pulse-dot"></span>
+              Smart Face Detection Active
+            </div>
+
             <p>
-              Posisikan wajah Anda di depan kamera untuk membuka{" "}
-              <b>Plant Controls</b>.
-              <br />
-              <small>
-                Register Face hanya menyimpan wajah Anda sebagai acuan. Verify Face hanya akan mengizinkan akses jika wajah yang terlihat cocok dengan acuan.
-              </small>
+              Verifikasi berlangsung <b>otomatis</b>. Posisikan wajah Anda di depan kamera.
             </p>
 
             <div className="webcam-container">
@@ -342,6 +339,7 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
                   facingMode: "user",
                 }}
               />
+              <div className="scanner-line"></div>
               <div className="face-guide-overlay">
                 <div className="face-guide-oval"></div>
               </div>
@@ -351,21 +349,14 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
 
             <div className="modal-actions">
               <button
-                onClick={captureAndVerify}
-                disabled={loading}
-                className="btn-verify"
-              >
-                {loading ? "Memeriksa..." : "Verify Face"}
-              </button>
-              <button
                 onClick={captureAndRegister}
                 disabled={loading}
                 className="btn-verify"
               >
-                Register Face
+                {loading ? "Menyimpan..." : "Simpan Muka"}
               </button>
               <button
-                onClick={() => setShowVerifyModal(false)}
+                onClick={handleCancelModal}
                 disabled={loading}
                 className="btn-cancel"
               >

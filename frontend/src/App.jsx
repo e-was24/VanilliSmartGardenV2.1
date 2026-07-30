@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Routes, Route, Navigate } from "react-router";
+import { useState } from "react";
+import { Routes, Route } from "react-router";
 import Navbar from "./components/Navbar";
 import Home from "./pages/Home";
 import Garden from "./pages/Garden";
@@ -8,18 +8,7 @@ import PlantControls from "./pages/PlantControls";
 import "./App.css";
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    if (typeof window !== "undefined") {
-      return window.sessionStorage.getItem("faceVerified") === "true";
-    }
-    return false;
-  });
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem("faceVerified", isAuthenticated ? "true" : "false");
-    }
-  }, [isAuthenticated]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   return (
     <div className="apps">
@@ -34,7 +23,7 @@ function App() {
         <Route
           path="/plant"
           element={
-            isAuthenticated ? <PlantControls /> : <Navigate to="/" replace />
+            isAuthenticated ? <PlantControls /> : <Home />
           }
         />
         <Route path="/garden" element={<Garden />} />
