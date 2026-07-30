@@ -182,7 +182,14 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
         method: "POST",
         body: formData,
       });
-      const result = await response.json();
+
+      let result = null;
+      try {
+        result = await response.json();
+      } catch {
+        const text = await response.text();
+        result = { message: text || `HTTP ${response.status}` };
+      }
 
       if (response.ok && result.status === "success") {
         setMessage(result.message);
@@ -215,7 +222,15 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }) {
         method: "POST",
         body: formData,
       });
-      const result = await response.json();
+
+      let result = null;
+      try {
+        result = await response.json();
+      } catch {
+        const text = await response.text();
+        result = { message: text || `HTTP ${response.status}` };
+      }
+
       setMessage(result.message || "Selesai.");
     } catch (error) {
       console.error(error);

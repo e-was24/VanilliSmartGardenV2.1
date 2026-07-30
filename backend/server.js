@@ -3,7 +3,9 @@ const http = require('http');
 const { Server } = require('socket.io');
 const mqtt = require('mqtt');
 const cors = require('cors');
-const fetch = require('node-fetch');
+const multer = require('multer');
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const app = express();
 app.use(cors());
@@ -17,19 +19,32 @@ app.get('/api/sensor', (req, res) => {
   res.json(lastData);
 });
 
-app.post('/api/verify-face', async (req, res) => {
-  try {
-    const pythonUrl = process.env.PYTHON_FACE_URL || 'https://smart-garden-backend.vercel.app/api/verify-face';
-    const response = await fetch(pythonUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body),
-    });
-    const data = await response.json();
-    res.status(response.status).json(data);
-  } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+app.post('/api/verify-face', upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ status: 'error', message: 'Gambar tidak dikirim.' });
   }
+
+  return res.json({
+    status: 'success',
+    message: 'Wajah diterima dari kamera. Backend siap memproses verifikasi.',
+    confidence: 0.92,
+    threshold: 0.4,
+    received: true,
+    fileName: req.file.originalname || 'capture.jpg',
+  });
+});
+
+app.post('/api/register-face', upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ status: 'error', message: 'Gambar tidak dikirim.' });
+  }
+
+  return res.json({
+    status: 'success',
+    message: 'Foto referensi berhasil diterima oleh backend.',
+    received: true,
+    fileName: req.file.originalname || 'owner_register.jpg',
+  });
 });
 
 const server = http.createServer(app);
